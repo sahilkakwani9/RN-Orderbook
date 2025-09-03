@@ -1,4 +1,3 @@
-// components/OrderBook.tsx
 import React, { useMemo } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useOrderBook, useTicker24hr } from '../hooks/useOrderBook';

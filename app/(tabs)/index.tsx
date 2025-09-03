@@ -1,11 +1,11 @@
-import { OrderBook } from '@/lib/components/OrderBook';
+import { OrderBookSideBySide } from '@/lib/components/OrderBookSideBySide';
 import { StyleSheet } from 'react-native';
 
 
 
 export default function HomeScreen() {
   return (
-    <OrderBook symbol="BTCUSDT" />
+    <OrderBookSideBySide symbol="BTCUSDT" />
   );
 }
 
