@@ -12,7 +12,6 @@ const TRADING_PAIRS = [
     'XRPUSDT',
     'DOGEUSDT',
     'AVAXUSDT',
-    'MATICUSDT',
     'LINKUSDT',
 ];
 
