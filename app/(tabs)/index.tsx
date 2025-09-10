@@ -1,11 +1,17 @@
-import { OrderBookSideBySide } from '@/lib/components/OrderBookSideBySide';
+import { OrderBook } from '@/lib/components/OrderBook';
 import { StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 
 
 export default function HomeScreen() {
   return (
-    <OrderBookSideBySide symbol="BTCUSDT" />
+    // <OrderBookSideBySide symbol="BTCUSDT" />
+    <SafeAreaView style={{
+      flex: 1
+    }}>
+      <OrderBook />
+    </SafeAreaView>
   );
 }
 

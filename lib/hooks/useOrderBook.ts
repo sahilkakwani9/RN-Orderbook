@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { binanceApi } from '../services/api';
 import { binanceWsService, OrderBookUpdate } from '../services/websocket';
 import { OrderBookStore, ProcessedOrderBook } from '../store/orderbookStore';
@@ -31,52 +31,95 @@ export const useOrderBook = (symbol: string) => {
 
     const storeRef = useRef<OrderBookStore>(new OrderBookStore());
     const subscriptionIdRef = useRef<string>(`orderbook-${symbol}-${Date.now()}`);
+    const currentSymbolRef = useRef<string>(symbol);
+    const isInitializingRef = useRef<boolean>(false);
+
+    // Update refs when symbol changes
+    useEffect(() => {
+        if (currentSymbolRef.current !== symbol) {
+            currentSymbolRef.current = symbol;
+            subscriptionIdRef.current = `orderbook-${symbol}-${Date.now()}`;
+            storeRef.current = new OrderBookStore(); // Create new store for new symbol
+            setOrderBook(null); // Clear existing order book data
+            setError(null);
+        }
+    }, [symbol]);
 
     // Get initial snapshot
-    const { data: snapshot, isLoading, error: snapshotError } = useOrderBookSnapshot(symbol);
+    const { data: snapshot, isLoading, error: snapshotError, refetch } = useOrderBookSnapshot(symbol);
 
+    const handleWebSocketUpdate = useCallback((update: OrderBookUpdate) => {
+        // Ensure we only process updates for the current symbol
+        if (update.s?.toUpperCase() !== currentSymbolRef.current.toUpperCase()) {
+            console.warn(`Received update for ${update.s}, but current symbol is ${currentSymbolRef.current}`);
+            return;
+        }
+
+        const updatedOrderBook = storeRef.current.updateFromWebSocket(update);
+
+        if (updatedOrderBook) {
+            console.log(`Updated order book for ${currentSymbolRef.current}`);
+            setOrderBook(updatedOrderBook);
+
+            // Update React Query cache
+            queryClient.setQueryData(['orderbook-live', currentSymbolRef.current], updatedOrderBook);
+        }
+    }, [queryClient]);
+
+    const initializeOrderBook = useCallback(async (snapshotData: any) => {
+        if (isInitializingRef.current || !snapshotData) {
+            return;
+        }
+
+        isInitializingRef.current = true;
+
+        try {
+            console.log(`Initializing order book for ${symbol}`);
+
+            // Initialize store with snapshot
+            const initialOrderBook = storeRef.current.initializeFromSnapshot(snapshotData, symbol);
+            setOrderBook(initialOrderBook);
+
+            // Connect WebSocket (this will disconnect any existing connection)
+            await binanceWsService.connect(symbol);
+            setIsConnected(true);
+            setError(null);
+
+            // Subscribe to updates
+            binanceWsService.subscribe(subscriptionIdRef.current, handleWebSocketUpdate);
+
+            console.log(`Successfully initialized order book for ${symbol}`);
+        } catch (err) {
+            console.error(`Failed to initialize order book for ${symbol}:`, err);
+            setError(err instanceof Error ? err.message : 'Failed to connect');
+            setIsConnected(false);
+        } finally {
+            isInitializingRef.current = false;
+        }
+    }, [symbol, handleWebSocketUpdate]);
+
+    // Initialize order book when snapshot is available
     useEffect(() => {
-        if (!snapshot) return;
+        if (snapshot && symbol === currentSymbolRef.current) {
+            initializeOrderBook(snapshot);
+        }
+    }, [snapshot, symbol, initializeOrderBook]);
 
-        const initializeOrderBook = async () => {
-            try {
-                // Initialize store with snapshot
-                const initialOrderBook = storeRef.current.initializeFromSnapshot(snapshot, symbol);
-                setOrderBook(initialOrderBook);
+    // Cleanup function
+    useEffect(() => {
+        const currentSubscriptionId = subscriptionIdRef.current;
 
-                // Connect WebSocket
-                await binanceWsService.connect(symbol);
-                setIsConnected(true);
-                setError(null);
+        return () => {
+            console.log(`Cleaning up order book subscription for ${currentSymbolRef.current}`);
+            binanceWsService.unsubscribe(currentSubscriptionId);
 
-                // Subscribe to updates
-                binanceWsService.subscribe(subscriptionIdRef.current, (update: OrderBookUpdate) => {
-                    const updatedOrderBook = storeRef.current.updateFromWebSocket(update);
-                    
-                    if (updatedOrderBook) {
-                        console.log("Updated order book");
-                        
-                        setOrderBook(updatedOrderBook);
-
-                        // Update React Query cache
-                        queryClient.setQueryData(['orderbook-live', symbol], updatedOrderBook);
-                    }
-                });
-
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to connect');
+            // Only disconnect if this is the last subscription or if we're changing symbols
+            if (binanceWsService.getCurrentSymbol() === currentSymbolRef.current) {
+                binanceWsService.disconnect();
                 setIsConnected(false);
             }
         };
-
-        initializeOrderBook();
-
-        return () => {
-            binanceWsService.unsubscribe(subscriptionIdRef.current);
-            binanceWsService.disconnect();
-            setIsConnected(false);
-        };
-    }, [snapshot, symbol, queryClient]);
+    }, [symbol]); // Depend on symbol to cleanup when it changes
 
     // Handle snapshot errors
     useEffect(() => {
@@ -85,12 +128,21 @@ export const useOrderBook = (symbol: string) => {
         }
     }, [snapshotError]);
 
+    // Reset states when symbol changes
+    useEffect(() => {
+        setIsConnected(false);
+        setError(null);
+    }, [symbol]);
+
     return {
         orderBook,
         isLoading,
         isConnected,
         error,
-        refetch: () => queryClient.invalidateQueries({ queryKey: ['orderbook-snapshot', symbol] }),
+        refetch: () => {
+            console.log(`Refetching snapshot for ${symbol}`);
+            return queryClient.invalidateQueries({ queryKey: ['orderbook-snapshot', symbol] });
+        },
     };
 };
 

@@ -1,10 +1,23 @@
-import React, { useMemo } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useOrderBook, useTicker24hr } from '../hooks/useOrderBook';
 import { ProcessedOrderBookEntry } from '../store/orderbookStore';
 
+// Popular trading pairs
+const TRADING_PAIRS = [
+    'BTCUSDT',
+    'ETHUSDT',
+    'BNBUSDT',
+    'SOLUSDT',
+    'XRPUSDT',
+    'DOGEUSDT',
+    'AVAXUSDT',
+    'MATICUSDT',
+    'LINKUSDT',
+];
+
 interface OrderBookProps {
-    symbol: string;
+    initialSymbol?: string;
 }
 
 interface OrderBookRowProps {
@@ -12,6 +25,71 @@ interface OrderBookRowProps {
     type: 'bid' | 'ask';
     maxTotal: number;
 }
+
+interface PairDropdownProps {
+    selectedPair: string;
+    onPairSelect: (pair: string) => void;
+}
+
+const PairDropdown: React.FC<PairDropdownProps> = ({ selectedPair, onPairSelect }) => {
+    const [isVisible, setIsVisible] = useState(false);
+
+    const renderPairItem = ({ item }: { item: string }) => (
+        <TouchableOpacity
+            style={[
+                styles.dropdownItem,
+                item === selectedPair && styles.selectedDropdownItem
+            ]}
+            onPress={() => {
+                onPairSelect(item);
+                setIsVisible(false);
+            }}
+        >
+            <Text style={[
+                styles.dropdownItemText,
+                item === selectedPair && styles.selectedDropdownItemText
+            ]}>
+                {item}
+            </Text>
+        </TouchableOpacity>
+    );
+
+    return (
+        <>
+            <TouchableOpacity
+                style={styles.dropdown}
+                onPress={() => setIsVisible(true)}
+            >
+                <Text style={styles.dropdownText}>{selectedPair}</Text>
+                <Text style={styles.dropdownArrow}>▼</Text>
+            </TouchableOpacity>
+
+            <Modal
+                visible={isVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setIsVisible(false)}
+            >
+                <TouchableOpacity
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={() => setIsVisible(false)}
+                >
+                    <View style={styles.dropdownModal}>
+                        <Text style={styles.dropdownTitle}>Select Trading Pair</Text>
+                        <FlatList
+                            data={TRADING_PAIRS}
+                            renderItem={renderPairItem}
+                            keyExtractor={(item) => item}
+                            style={styles.dropdownList}
+                            showsVerticalScrollIndicator={false}
+                        />
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+        </>
+    );
+};
 
 const OrderBookRow: React.FC<OrderBookRowProps> = ({ entry, type, maxTotal }) => {
     const fillPercentage = (entry.total / maxTotal) * 100;
@@ -36,9 +114,10 @@ const OrderBookRow: React.FC<OrderBookRowProps> = ({ entry, type, maxTotal }) =>
     );
 };
 
-export const OrderBook: React.FC<OrderBookProps> = ({ symbol }) => {
-    const { orderBook, isLoading, isConnected, error } = useOrderBook(symbol);
-    const { data: ticker } = useTicker24hr(symbol);
+export const OrderBook: React.FC<OrderBookProps> = ({ initialSymbol = 'ETHUSDT' }) => {
+    const [selectedPair, setSelectedPair] = useState(initialSymbol);
+    const { orderBook, isLoading, isConnected, error } = useOrderBook(selectedPair);
+    const { data: ticker } = useTicker24hr(selectedPair);
 
     const { maxBidTotal, maxAskTotal } = useMemo(() => {
         if (!orderBook) return { maxBidTotal: 0, maxAskTotal: 0 };
@@ -72,9 +151,17 @@ export const OrderBook: React.FC<OrderBookProps> = ({ symbol }) => {
 
     return (
         <View style={styles.container}>
+            {/* Pair Selection Dropdown */}
+            <View style={styles.pairSelectorContainer}>
+                <PairDropdown
+                    selectedPair={selectedPair}
+                    onPairSelect={setSelectedPair}
+                />
+            </View>
+
             {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.symbolText}>{symbol}</Text>
+                <Text style={styles.symbolText}>{selectedPair}</Text>
                 <View style={styles.connectionStatus}>
                     <View style={[styles.statusDot, { backgroundColor: isConnected ? '#0ecb81' : '#f6465d' }]} />
                     <Text style={styles.statusText}>
@@ -167,6 +254,75 @@ const styles = StyleSheet.create({
         color: '#f6465d',
         fontSize: 16,
         textAlign: 'center',
+    },
+    pairSelectorContainer: {
+        padding: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#2b3139',
+    },
+    dropdown: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#2b3139',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#3e4149',
+    },
+    dropdownText: {
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    dropdownArrow: {
+        color: '#b7bdc6',
+        fontSize: 12,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    dropdownModal: {
+        backgroundColor: '#2b3139',
+        borderRadius: 12,
+        margin: 20,
+        maxHeight: '70%',
+        width: '80%',
+        maxWidth: 300,
+    },
+    dropdownTitle: {
+        color: '#ffffff',
+        fontSize: 18,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        padding: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#3e4149',
+    },
+    dropdownList: {
+        maxHeight: 400,
+    },
+    dropdownItem: {
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#3e414950',
+    },
+    selectedDropdownItem: {
+        backgroundColor: '#f0b90b20',
+    },
+    dropdownItemText: {
+        color: '#ffffff',
+        fontSize: 16,
+        textAlign: 'center',
+    },
+    selectedDropdownItemText: {
+        color: '#f0b90b',
+        fontWeight: '600',
     },
     header: {
         flexDirection: 'row',
