@@ -1,5 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, {
+    interpolateColor,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
+} from 'react-native-reanimated';
 import { useOrderBook, useTicker24hr } from '../hooks/useOrderBook';
 import { ProcessedOrderBookEntry } from '../store/orderbookStore';
 
@@ -91,19 +97,34 @@ const PairDropdown: React.FC<PairDropdownProps> = ({ selectedPair, onPairSelect 
 };
 
 const OrderBookRow: React.FC<OrderBookRowProps> = ({ entry, type, maxTotal }) => {
-    const fillPercentage = (entry.total / maxTotal) * 100;
+    const fillWidth = useSharedValue(0);
+
+    useEffect(() => {
+        const percentage = maxTotal > 0 ? (entry.total / maxTotal) * 100 : 0;
+        fillWidth.value = withTiming(percentage, { duration: 300 });
+    }, [entry.total, maxTotal]);
+
+    const animatedStyle = useAnimatedStyle(() => {
+        return {
+            width: `${fillWidth.value}%`,
+            backgroundColor:
+                type === 'bid'
+                    ? interpolateColor(
+                        fillWidth.value,
+                        [0, 100],
+                        ['rgba(14,203,129,0)', 'rgba(14,203,129,0.15)']
+                    )
+                    : interpolateColor(
+                        fillWidth.value,
+                        [0, 100],
+                        ['rgba(246,70,93,0)', 'rgba(246,70,93,0.15)']
+                    ),
+        };
+    });
 
     return (
         <View style={styles.row}>
-            <View
-                style={[
-                    styles.fillBar,
-                    {
-                        width: `${fillPercentage}%`,
-                        backgroundColor: type === 'bid' ? '#0ecb8126' : '#f6465d26'
-                    }
-                ]}
-            />
+            <Animated.View style={[styles.fillBar, animatedStyle]} />
             <Text style={[styles.price, { color: type === 'bid' ? '#0ecb81' : '#f6465d' }]}>
                 {entry.price.toFixed(2)}
             </Text>
@@ -112,6 +133,8 @@ const OrderBookRow: React.FC<OrderBookRowProps> = ({ entry, type, maxTotal }) =>
         </View>
     );
 };
+
+export default OrderBookRow;
 
 export const OrderBook: React.FC<OrderBookProps> = ({ initialSymbol = 'ETHUSDT' }) => {
     const [selectedPair, setSelectedPair] = useState(initialSymbol);
