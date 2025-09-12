@@ -1,3 +1,4 @@
+import { LegendList } from "@legendapp/list";
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, {
@@ -300,14 +301,20 @@ export const OrderBook: React.FC<OrderBookProps> = ({ initialSymbol = 'ETHUSDT' 
             <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
                 {/* Asks (Sell Orders) - Highest first */}
                 <View style={styles.asksSection}>
-                    {displayAsks.slice().reverse().map((ask, index) => (
-                        <OrderBookRow
-                            key={`ask-${ask.price}`}
-                            entry={ask}
-                            type="ask"
-                            maxTotal={maxAskTotal}
-                        />
-                    ))}
+                    <LegendList
+                        data={displayAsks.slice().reverse()}
+                        renderItem={({ item }) => (
+                            <OrderBookRow
+                                entry={item}
+                                type="ask"
+                                maxTotal={maxAskTotal}
+                            />
+                        )}
+                        keyExtractor={(item) => `ask-${item.price}`}
+                        showsVerticalScrollIndicator={false}
+                        maintainVisibleContentPosition
+                    />
+
                 </View>
 
                 {/* Spread */}
@@ -319,14 +326,20 @@ export const OrderBook: React.FC<OrderBookProps> = ({ initialSymbol = 'ETHUSDT' 
 
                 {/* Bids (Buy Orders) */}
                 <View style={styles.bidsSection}>
-                    {displayBids.map((bid, index) => (
-                        <OrderBookRow
-                            key={`bid-${bid.price}`}
-                            entry={bid}
-                            type="bid"
-                            maxTotal={maxBidTotal}
-                        />
-                    ))}
+                    <LegendList
+                        data={displayBids}
+                        renderItem={({ item }) => (
+                            <OrderBookRow
+                                key={`bid-${item.price}`}
+                                entry={item}
+                                type="bid"
+                                maxTotal={maxBidTotal}
+                            />
+                        )}
+                        keyExtractor={(item) => `bid-${item.price}`}
+                        showsVerticalScrollIndicator={false}
+                        maintainVisibleContentPosition
+                    />
                 </View>
             </ScrollView>
 
