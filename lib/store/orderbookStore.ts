@@ -76,14 +76,13 @@ export class OrderBookStore {
 
         const bids = entries
             .filter(entry => entry.price < midPrice)
-            .sort((a, b) => b.price - a.price) // Highest first
-            .slice(0, 20); // Top 20 levels
+            .sort((a, b) => b.price - a.price)
+            .slice(0, 100); // Highest first
 
         const asks = entries
             .filter(entry => entry.price > midPrice)
             .sort((a, b) => a.price - b.price) // Lowest first
-            .slice(0, 20); // Top 20 levels
-
+            .slice(0, 100);
         // Calculate cumulative totals
         let bidTotal = 0;
         bids.forEach(bid => {

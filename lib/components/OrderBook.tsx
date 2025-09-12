@@ -21,6 +21,9 @@ const TRADING_PAIRS = [
     'LINKUSDT',
 ];
 
+// Row count options
+const ROW_COUNT_OPTIONS = [5, 10, 20, 50, 100];
+
 interface OrderBookProps {
     initialSymbol?: string;
 }
@@ -34,6 +37,11 @@ interface OrderBookRowProps {
 interface PairDropdownProps {
     selectedPair: string;
     onPairSelect: (pair: string) => void;
+}
+
+interface RowCountSelectorProps {
+    selectedCount: number;
+    onCountSelect: (count: number) => void;
 }
 
 const PairDropdown: React.FC<PairDropdownProps> = ({ selectedPair, onPairSelect }) => {
@@ -96,6 +104,66 @@ const PairDropdown: React.FC<PairDropdownProps> = ({ selectedPair, onPairSelect 
     );
 };
 
+const RowCountSelector: React.FC<RowCountSelectorProps> = ({ selectedCount, onCountSelect }) => {
+    const [isVisible, setIsVisible] = useState(false);
+
+    const renderCountItem = ({ item }: { item: number }) => (
+        <TouchableOpacity
+            style={[
+                styles.dropdownItem,
+                item === selectedCount && styles.selectedDropdownItem
+            ]}
+            onPress={() => {
+                onCountSelect(item);
+                setIsVisible(false);
+            }}
+        >
+            <Text style={[
+                styles.dropdownItemText,
+                item === selectedCount && styles.selectedDropdownItemText
+            ]}>
+                {item} rows
+            </Text>
+        </TouchableOpacity>
+    );
+
+    return (
+        <>
+            <TouchableOpacity
+                style={[styles.dropdown, styles.rowCountDropdown]}
+                onPress={() => setIsVisible(true)}
+            >
+                <Text style={styles.dropdownText}>{selectedCount}</Text>
+                <Text style={styles.dropdownArrow}>▼</Text>
+            </TouchableOpacity>
+
+            <Modal
+                visible={isVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setIsVisible(false)}
+            >
+                <TouchableOpacity
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={() => setIsVisible(false)}
+                >
+                    <View style={styles.dropdownModal}>
+                        <Text style={styles.dropdownTitle}>Rows per side</Text>
+                        <FlatList
+                            data={ROW_COUNT_OPTIONS}
+                            renderItem={renderCountItem}
+                            keyExtractor={(item) => item.toString()}
+                            style={styles.dropdownList}
+                            showsVerticalScrollIndicator={false}
+                        />
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+        </>
+    );
+};
+
 const OrderBookRow: React.FC<OrderBookRowProps> = ({ entry, type, maxTotal }) => {
     const fillWidth = useSharedValue(0);
 
@@ -138,17 +206,24 @@ export default OrderBookRow;
 
 export const OrderBook: React.FC<OrderBookProps> = ({ initialSymbol = 'ETHUSDT' }) => {
     const [selectedPair, setSelectedPair] = useState(initialSymbol);
+    const [rowCount, setRowCount] = useState(20); // Default to 20 rows per side
     const { orderBook, isLoading, isConnected, error } = useOrderBook(selectedPair);
     const { data: ticker } = useTicker24hr(selectedPair);
 
-    const { maxBidTotal, maxAskTotal } = useMemo(() => {
-        if (!orderBook) return { maxBidTotal: 0, maxAskTotal: 0 };
+    const { maxBidTotal, maxAskTotal, displayBids, displayAsks } = useMemo(() => {
+        if (!orderBook) return { maxBidTotal: 0, maxAskTotal: 0, displayBids: [], displayAsks: [] };
+
+        // Limit the number of rows displayed
+        const displayBids = orderBook.bids.slice(0, rowCount);
+        const displayAsks = orderBook.asks.slice(0, rowCount);
 
         return {
-            maxBidTotal: Math.max(...orderBook.bids.map(b => b.total), 0),
-            maxAskTotal: Math.max(...orderBook.asks.map(a => a.total), 0),
+            maxBidTotal: Math.max(...displayBids.map(b => b.total), 0),
+            maxAskTotal: Math.max(...displayAsks.map(a => a.total), 0),
+            displayBids,
+            displayAsks,
         };
-    }, [orderBook]);
+    }, [orderBook, rowCount]);
 
     if (isLoading) {
         return (
@@ -173,12 +248,21 @@ export const OrderBook: React.FC<OrderBookProps> = ({ initialSymbol = 'ETHUSDT' 
 
     return (
         <View style={styles.container}>
-            {/* Pair Selection Dropdown */}
-            <View style={styles.pairSelectorContainer}>
-                <PairDropdown
-                    selectedPair={selectedPair}
-                    onPairSelect={setSelectedPair}
-                />
+            {/* Controls Row */}
+            <View style={styles.controlsContainer}>
+                <View style={styles.pairSelectorContainer}>
+                    <PairDropdown
+                        selectedPair={selectedPair}
+                        onPairSelect={setSelectedPair}
+                    />
+                </View>
+                <View style={styles.rowCountContainer}>
+                    <Text style={styles.rowCountLabel}>Rows:</Text>
+                    <RowCountSelector
+                        selectedCount={rowCount}
+                        onCountSelect={setRowCount}
+                    />
+                </View>
             </View>
 
             {/* Header */}
@@ -216,7 +300,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({ initialSymbol = 'ETHUSDT' 
             <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
                 {/* Asks (Sell Orders) - Highest first */}
                 <View style={styles.asksSection}>
-                    {orderBook.asks.slice().reverse().map((ask, index) => (
+                    {displayAsks.slice().reverse().map((ask, index) => (
                         <OrderBookRow
                             key={`ask-${ask.price}`}
                             entry={ask}
@@ -235,7 +319,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({ initialSymbol = 'ETHUSDT' 
 
                 {/* Bids (Buy Orders) */}
                 <View style={styles.bidsSection}>
-                    {orderBook.bids.map((bid, index) => (
+                    {displayBids.map((bid, index) => (
                         <OrderBookRow
                             key={`bid-${bid.price}`}
                             entry={bid}
@@ -245,6 +329,13 @@ export const OrderBook: React.FC<OrderBookProps> = ({ initialSymbol = 'ETHUSDT' 
                     ))}
                 </View>
             </ScrollView>
+
+            {/* Footer info showing displayed vs total */}
+            <View style={styles.footerInfo}>
+                <Text style={styles.footerText}>
+                    Showing {Math.min(rowCount, orderBook.bids.length)} of {orderBook.bids.length} bids, {Math.min(rowCount, orderBook.asks.length)} of {orderBook.asks.length} asks
+                </Text>
+            </View>
         </View>
     );
 };
@@ -277,10 +368,26 @@ const styles = StyleSheet.create({
         fontSize: 16,
         textAlign: 'center',
     },
-    pairSelectorContainer: {
+    controlsContainer: {
+        flexDirection: 'row',
         padding: 16,
         borderBottomWidth: 1,
         borderBottomColor: '#2b3139',
+        alignItems: 'flex-end',
+        gap: 12,
+    },
+    pairSelectorContainer: {
+        flex: 1,
+    },
+    rowCountContainer: {
+        alignItems: 'center',
+        minWidth: 80,
+    },
+    rowCountLabel: {
+        color: '#b7bdc6',
+        fontSize: 12,
+        marginBottom: 4,
+        textAlign: 'center',
     },
     dropdown: {
         flexDirection: 'row',
@@ -292,6 +399,10 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         borderWidth: 1,
         borderColor: '#3e4149',
+    },
+    rowCountDropdown: {
+        minWidth: 70,
+        paddingHorizontal: 12,
     },
     dropdownText: {
         color: '#ffffff',
@@ -462,5 +573,17 @@ const styles = StyleSheet.create({
         flex: 1,
         textAlign: 'center',
         zIndex: 1,
+    },
+    footerInfo: {
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderTopWidth: 1,
+        borderTopColor: '#2b3139',
+        backgroundColor: '#1e2329',
+    },
+    footerText: {
+        color: '#b7bdc6',
+        fontSize: 12,
+        textAlign: 'center',
     },
 });
